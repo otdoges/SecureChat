@@ -200,4 +200,39 @@ export const subscribeToCollection = (
 };
 
 // Export the PocketBase instance
-export const getPocketBase = (): PocketBase => pb; 
+export const getPocketBase = (): PocketBase => pb;
+
+/**
+ * Get a user's profile data
+ * @param userId The user ID
+ * @returns The user profile or null if not found
+ */
+export async function getUserProfile(userId: string) {
+  try {
+    const pb = getPocketBase();
+    const record = await pb.collection('users').getOne(userId, {
+      expand: 'passkeys'
+    });
+    return record;
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update a user's profile data
+ * @param userId The user ID
+ * @param data The profile data to update
+ * @returns The updated user profile
+ */
+export async function updateUserProfile(userId: string, data: any) {
+  try {
+    const pb = getPocketBase();
+    const record = await pb.collection('users').update(userId, data);
+    return record;
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    throw error;
+  }
+} 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { createClient } from '@supabase/supabase-js';
+import * as pbClient from '../utils/pocketbaseClient';
 
 // Components
 import Sidebar from '../components/Sidebar';
@@ -16,26 +16,12 @@ import { generateChannelKey, retrieveUserKey, decryptMessage } from '../utils/en
 declare global {
   interface Window {
     env: {
-      SUPABASE_URL: string;
-      SUPABASE_ANON_KEY: string;
+      POCKETBASE_URL: string;
     }
   }
 }
 
-// Get Supabase instance - try multiple sources for the environment variables
-console.log('Environment variables in renderer:', {
-  fromWindow: !!window.env?.SUPABASE_URL,
-  fromImport: !!import.meta.env.VITE_SUPABASE_URL
-});
-
-// Try to get from preload script first, then fallback to import.meta.env, then fallback to hardcoded values
-const supabaseUrl = window.env?.SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL || 'https://qwenpgqeqtbxeyvtqzpi.supabase.co';
-const supabaseAnonKey = window.env?.SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
-
-console.log('Using Supabase URL:', supabaseUrl);
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-// Mock data for messages (would come from Supabase in a real app)
+// Mock data for messages (would come from PocketBase in a real app)
 const mockMessages: Record<string, MessageType[]> = {
   '101': [
     {
@@ -109,7 +95,7 @@ const ChannelView = () => {
   // Fetch channel data and messages
   useEffect(() => {
     if (channelId) {
-      // In a real app, you would fetch the channel data from Supabase
+      // In a real app, you would fetch the channel data from PocketBase
       const mockChannelName = 
         channelId === '101' ? 'welcome' :
         channelId === '102' ? 'general-chat' :
@@ -134,7 +120,7 @@ const ChannelView = () => {
       setMessages(mockMessages[channelId] || []);
       
       // In a real app, you would subscribe to new messages
-      // This could be done with Supabase realtime subscriptions
+      // This could be done with PocketBase realtime subscriptions
     }
   }, [channelId]);
   
@@ -157,15 +143,13 @@ const ChannelView = () => {
     // Add message to local state
     setMessages(prev => [...prev, newMessage]);
     
-    // In a real app, you would send the encrypted message to Supabase
-    // const { error } = await supabase
-    //   .from('messages')
-    //   .insert([{
-    //     channel_id: channelId,
-    //     user_id: user.id,
-    //     content: encryptedContent,
-    //     created_at: new Date(),
-    //   }]);
+    // In a real app, you would send the encrypted message to PocketBase
+    // const { error } = await pbClient.collection('messages').create({
+    //   channel_id: channelId,
+    //   user_id: user.id,
+    //   content: encryptedContent,
+    //   created_at: new Date(),
+    // });
   };
   
   // Group messages by sender and time
