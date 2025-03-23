@@ -5,9 +5,9 @@ const electron_1 = require("electron");
 // the ipcRenderer without exposing the entire object
 electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     getAppVersion: () => electron_1.ipcRenderer.invoke('app:version'),
+    getPocketBaseUrl: () => electron_1.ipcRenderer.invoke('get-pocketbase-url'),
 });
 // Expose environment variables to renderer process
 electron_1.contextBridge.exposeInMainWorld('env', {
-    SUPABASE_URL: process.env.VITE_SUPABASE_URL || '',
-    SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY || '',
+    POCKETBASE_URL: 'http://127.0.0.1:8090',
 });
