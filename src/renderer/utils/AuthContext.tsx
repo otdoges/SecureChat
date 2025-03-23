@@ -1,65 +1,56 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import { SupabaseClient, User, Session } from '@supabase/supabase-js';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import * as pb from './pocketbaseClient';
 
-// Define auth context type
-type AuthContextType = {
-  user: User | null;
-  session: Session | null;
+interface AuthContextType {
+  user: any | null;
+  signIn: (email: string, password: string) => Promise<{ error?: any }>;
+  signUp: (email: string, password: string, username: string) => Promise<{ error?: any }>;
+  signOut: () => void;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: any | null }>;
-  signUp: (email: string, password: string, username: string) => Promise<{ error: any | null, user: User | null }>;
-  signOut: () => Promise<void>;
-};
+}
 
-// Create context with default values
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Create provider component
-export const AuthProvider: React.FC<{ children: React.ReactNode, supabase: SupabaseClient }> = ({ children, supabase }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Check for existing session on mount
   useEffect(() => {
-    // Get initial session
-    const getInitialSession = async () => {
+    const checkAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        setSession(session);
-        setUser(session?.user ?? null);
+        // PocketBase automatically loads auth state from localStorage
+        if (pb.isAuthenticated()) {
+          setUser(pb.getCurrentUser());
+        }
       } catch (error) {
-        console.error('Error getting initial session:', error);
+        console.error('Error checking authentication:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    getInitialSession();
+    checkAuth();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
+    // Subscribe to auth state changes
+    const unsubscribe = pb.getPocketBase().authStore.onChange(() => {
+      setUser(pb.getCurrentUser());
+    });
 
-    // Cleanup on unmount
     return () => {
-      subscription.unsubscribe();
+      // Clean up subscription
+      unsubscribe();
     };
-  }, [supabase]);
+  }, []);
 
   // Sign in with email and password
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({ 
-        email, 
-        password 
-      });
-      return { error };
-    } catch (error) {
+      await pb.login(email, password);
+      setUser(pb.getCurrentUser());
+      return {};
+    } catch (error: any) {
+      console.error('Error signing in:', error);
       return { error };
     }
   };
@@ -67,67 +58,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode, supabase: Supab
   // Sign up with email and password
   const signUp = async (email: string, password: string, username: string) => {
     try {
-      const { data, error } = await supabase.auth.signUp({ 
-        email, 
-        password,
-        options: {
-          data: {
-            username,
-          },
-        },
-      });
-      
-      // If successful and the user is created, also create a profile entry
-      if (data.user && !error) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert([
-            { 
-              id: data.user.id, 
-              username,
-              avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${username}`,
-              status: 'online',
-            },
-          ]);
-        
-        if (profileError) {
-          console.error('Error creating profile:', profileError);
-          return { error: profileError, user: null };
-        }
-      }
-      
-      return { error, user: data.user };
-    } catch (error) {
-      return { error, user: null };
+      await pb.register(email, password, username);
+      // Automatically log in after registration
+      await pb.login(email, password);
+      setUser(pb.getCurrentUser());
+      return {};
+    } catch (error: any) {
+      console.error('Error signing up:', error);
+      return { error };
     }
   };
 
   // Sign out
-  const signOut = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
+  const signOut = () => {
+    pb.logout();
+    setUser(null);
   };
 
   const value = {
     user,
-    session,
-    loading,
     signIn,
     signUp,
     signOut,
+    loading,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {!loading && children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// Custom hook to use auth context
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
