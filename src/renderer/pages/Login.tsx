@@ -6,6 +6,9 @@ import { retrieveUserKey, generateUserKey, storeUserKey } from '../utils/encrypt
 import { createOrUpdateProfile } from '../utils/supabaseService';
 import PasskeyLogin from '../components/PasskeyLogin';
 import QRCodeLogin from '../components/QRCodeLogin';
+import { isPasskeySupported, authenticateWithPasskey } from '../utils/passkey';
+import QRCode from 'react-qr-code';
+import { generateQRLoginSession, checkQRLoginStatus } from '../utils/qrLogin';
 
 declare global {
   interface Window {
@@ -33,6 +36,10 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authMethod, setAuthMethod] = useState<AuthMethod>(AuthMethod.PASSWORD);
+  const [passkeySupported, setPasskeySupported] = useState(false);
+  const [showQR, setShowQR] = useState(false);
+  const [qrToken, setQRToken] = useState('');
+  const [qrPolling, setQRPolling] = useState<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // If user is already authenticated, redirect to channels
@@ -40,6 +47,51 @@ const Login = () => {
       navigate('/channels');
     }
   }, [user, navigate]);
+
+  // Check if passkeys are supported
+  useEffect(() => {
+    const checkPasskeySupport = async () => {
+      const supported = await isPasskeySupported();
+      setPasskeySupported(supported);
+    };
+    
+    checkPasskeySupport();
+  }, []);
+
+  // Handle QR code polling
+  useEffect(() => {
+    if (showQR && qrToken) {
+      const interval = setInterval(async () => {
+        const result = await checkQRLoginStatus(qrToken);
+        
+        if (result.status === 'authenticated' && result.session) {
+          // User authenticated via QR code
+          setShowQR(false);
+          clearInterval(interval);
+          
+          // Complete login with the session
+          setLoading(true);
+          try {
+            // Use the session from QR login
+            navigate('/');
+          } catch (error: any) {
+            setError('Failed to authenticate with QR session: ' + error.message);
+          }
+          setLoading(false);
+        } else if (result.status === 'expired' || result.status === 'error') {
+          setError('QR code has expired or is invalid. Please try again.');
+          setShowQR(false);
+          clearInterval(interval);
+        }
+      }, 2000);
+      
+      setQRPolling(interval);
+      
+      return () => {
+        clearInterval(interval);
+      };
+    }
+  }, [showQR, qrToken, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,6 +130,46 @@ const Login = () => {
   // Error handler for authentication methods
   const handleAuthError = (message: string) => {
     setError(message);
+  };
+
+  // Handle passkey login
+  const handlePasskeyLogin = async () => {
+    setError(null);
+    setLoading(true);
+    
+    try {
+      const result = await authenticateWithPasskey();
+      if (result.success) {
+        navigate('/');
+      } else {
+        setError(result.error || 'Failed to authenticate with passkey');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to authenticate with passkey');
+    }
+    
+    setLoading(false);
+  };
+
+  // Handle QR code login
+  const handleQRLogin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setError(null);
+    setLoading(true);
+    
+    try {
+      const result = await generateQRLoginSession();
+      if (result.success) {
+        setQRToken(result.token);
+        setShowQR(true);
+      } else {
+        setError(result.error || 'Failed to generate QR login session');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to generate QR login session');
+    }
+    
+    setLoading(false);
   };
 
   return (
@@ -233,10 +325,36 @@ const Login = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
-              <QRCodeLogin 
-                onLoginSuccess={handleQRSuccess}
-                onError={handleAuthError}
-              />
+              {showQR ? (
+                <div className="p-4 bg-white rounded-lg mb-4 flex flex-col items-center">
+                  <p className="text-black text-center mb-2">Scan this QR code with the mobile app to sign in</p>
+                  <div className="p-2 bg-white">
+                    <QRCode value={`https://yourdomain.com/qr-login?token=${qrToken}`} size={200} />
+                  </div>
+                  <button
+                    className="mt-4 text-sm text-blue-400 hover:text-blue-300"
+                    onClick={() => {
+                      setShowQR(false);
+                      if (qrPolling) clearInterval(qrPolling);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleQRLogin} className="space-y-4">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-gray-700 text-white py-2 px-4 rounded hover:bg-gray-600 transition duration-300 disabled:opacity-50"
+                  >
+                    <div className="flex items-center justify-center space-x-2">
+                      <span className="material-icons text-xl">qr_code_scanner</span>
+                      <span>Sign in with QR Code</span>
+                    </div>
+                  </button>
+                </form>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../utils/AuthContext';
 import { generateUserKey, storeUserKey } from '../utils/encryption';
 import { createOrUpdateProfile } from '../utils/supabaseService';
+import { registerPasskey, isPasskeySupported } from '../utils/passkey';
 
 // Use the Window interface from Login.tsx
 declare global {
@@ -16,64 +17,81 @@ declare global {
   }
 }
 
-const Register = () => {
-  const { signUp } = useAuth();
+const Register: React.FC = () => {
+  const { signUp, user } = useAuth();
   const navigate = useNavigate();
-  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [username, setUsername] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const handleRegister = async (e: React.FormEvent) => {
+  const [loading, setLoading] = useState(false);
+  const [passkeySupported, setPasskeySupported] = useState(false);
+  const [setupPasskey, setSetupPasskey] = useState(false);
+  
+  // Check if passkeys are supported
+  useEffect(() => {
+    const checkPasskeySupport = async () => {
+      const supported = await isPasskeySupported();
+      setPasskeySupported(supported);
+    };
+    
+    checkPasskeySupport();
+  }, []);
+  
+  // If user is already logged in, redirect to chat
+  useEffect(() => {
+    if (user) {
+      navigate('/');
+    }
+  }, [user, navigate]);
+  
+  // Handle form submission
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setLoading(true);
-
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters long');
-      setLoading(false);
+    
+    // Validate form inputs
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
       return;
     }
-
+    
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long');
+      return;
+    }
+    
+    setLoading(true);
+    
     try {
-      const { error, user } = await signUp(email, password, username);
+      // Register user
+      const result = await signUp(email, password, username);
       
-      if (error) {
-        setError(error.message);
-        setLoading(false);
-        return;
-      }
-      
-      if (user) {
-        // Generate and store user encryption key
-        const userKey = generateUserKey(user.id, password);
-        storeUserKey(userKey, password);
-        
+      // If user opted to set up a passkey and passkeys are supported
+      if (setupPasskey && passkeySupported && result.success) {
         try {
-          // Save/update user profile to Supabase
-          await createOrUpdateProfile({
-            id: user.id,
-            username: username,
-            avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${username}`,
-            status: 'online'
-          });
-          
-          // Navigate to login
-          navigate('/login', { state: { registrationSuccess: true } });
-        } catch (err: any) {
-          console.error("Error saving profile to Supabase:", err);
-          setError("Registration successful, but failed to save profile data.");
+          // Set up passkey for the user
+          const passkeyResult = await registerPasskey(username);
+          if (!passkeyResult.success) {
+            setError('Account created, but passkey setup failed: ' + passkeyResult.error);
+            return;
+          }
+        } catch (passkeyError: any) {
+          setError('Account created, but passkey setup failed: ' + passkeyError.message);
+          return;
         }
       }
+      
+      // Navigate to login page
+      navigate('/login');
     } catch (err: any) {
-      setError(err.message || 'An error occurred during registration');
-    } finally {
-      setLoading(false);
+      setError(err.message || 'Failed to create account');
     }
+    
+    setLoading(false);
   };
-
+  
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -97,16 +115,31 @@ const Register = () => {
           </motion.h1>
         </div>
         
-        <form className="space-y-6" onSubmit={handleRegister}>
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="p-4 text-white bg-discord-danger rounded"
-            >
-              {error}
-            </motion.div>
-          )}
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-4 text-white bg-discord-danger rounded"
+          >
+            {error}
+          </motion.div>
+        )}
+        
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label htmlFor="username" className="block text-sm font-medium text-discord-text-normal">
+              USERNAME
+            </label>
+            <input
+              id="username"
+              name="username"
+              type="text"
+              required
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="input w-full mt-1"
+            />
+          </div>
           
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-discord-text-normal">
@@ -125,21 +158,6 @@ const Register = () => {
           </div>
           
           <div>
-            <label htmlFor="username" className="block text-sm font-medium text-discord-text-normal">
-              USERNAME
-            </label>
-            <input
-              id="username"
-              name="username"
-              type="text"
-              required
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="input w-full mt-1"
-            />
-          </div>
-
-          <div>
             <label htmlFor="password" className="block text-sm font-medium text-discord-text-normal">
               PASSWORD
             </label>
@@ -157,7 +175,38 @@ const Register = () => {
               Must be at least 8 characters long
             </p>
           </div>
-
+          
+          <div>
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-discord-text-normal">
+              CONFIRM PASSWORD
+            </label>
+            <input
+              id="confirmPassword"
+              name="confirmPassword"
+              type="password"
+              autoComplete="new-password"
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="input w-full mt-1"
+            />
+          </div>
+          
+          {passkeySupported && (
+            <div className="flex items-center">
+              <input
+                id="setupPasskey"
+                type="checkbox"
+                checked={setupPasskey}
+                onChange={(e) => setSetupPasskey(e.target.checked)}
+                className="w-4 h-4 bg-discord-tertiary border-discord-text-muted rounded focus:ring-discord-text-link"
+              />
+              <label htmlFor="setupPasskey" className="ml-2 text-sm text-discord-text-muted">
+                Set up passkey for passwordless login
+              </label>
+            </div>
+          )}
+          
           <div>
             <motion.button
               whileHover={{ scale: 1.02 }}
