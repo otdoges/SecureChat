@@ -1,108 +1,100 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState } from 'react';
 import { registerPasskey, isPasskeySupported } from '../utils/passkey';
 
 interface PasskeySetupProps {
-  userId: string;
   username: string;
+  onSuccess: () => void;
+  onError: (error: string) => void;
 }
 
-const PasskeySetup: React.FC<PasskeySetupProps> = ({ userId, username }) => {
+const PasskeySetup: React.FC<PasskeySetupProps> = ({ username, onSuccess, onError }) => {
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [message, setMessage] = useState('');
-  const [supported, setSupported] = useState(false);
-
-  useEffect(() => {
-    // Check if passkeys are supported by the browser
-    setSupported(isPasskeySupported());
+  const [supported, setSupported] = useState<boolean | null>(null);
+  
+  // Check if passkeys are supported on component mount
+  React.useEffect(() => {
+    const checkSupport = async () => {
+      const isSupported = await isPasskeySupported();
+      setSupported(isSupported);
+    };
+    
+    checkSupport();
   }, []);
-
+  
+  // Handle passkey registration
   const handleRegisterPasskey = async () => {
-    if (!userId || !username) {
-      setStatus('error');
-      setMessage('User information is missing');
+    if (!username) {
+      onError('Username is required to register a passkey');
       return;
     }
-
+    
     setLoading(true);
-    setStatus('idle');
-    setMessage('');
-
+    
     try {
-      const result = await registerPasskey(userId, username);
+      const result = await registerPasskey(username);
+      
       if (result.success) {
-        setStatus('success');
-        setMessage(result.message || 'Passkey registered successfully!');
+        onSuccess();
       } else {
-        setStatus('error');
-        setMessage(result.message || 'Failed to register passkey');
+        onError(result.error || 'Failed to register passkey');
       }
     } catch (error: any) {
-      console.error('Passkey registration error:', error);
-      setStatus('error');
-      setMessage(error.message || 'An unexpected error occurred');
+      onError(error.message || 'An unexpected error occurred');
     } finally {
       setLoading(false);
     }
   };
-
+  
+  // If we're still checking support, show loading
+  if (supported === null) {
+    return (
+      <div className="flex flex-col items-center justify-center p-6">
+        <p className="text-gray-400 mb-4">Checking passkey support...</p>
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+      </div>
+    );
+  }
+  
+  // If passkeys are not supported, show message
   if (!supported) {
     return (
-      <div className="p-4 border border-discord-border rounded-md bg-discord-secondary">
-        <h3 className="text-lg font-medium text-discord-text-normal mb-2">Passkeys</h3>
-        <p className="text-discord-text-muted mb-4">
-          Your browser doesn't support passkeys. Try using a modern browser like Chrome, Safari, or Edge.
+      <div className="p-6 border border-yellow-600 bg-yellow-800 bg-opacity-30 rounded-md">
+        <h3 className="text-yellow-500 font-semibold text-lg mb-2">Passkeys Not Supported</h3>
+        <p className="text-gray-300">
+          Your browser or device doesn't support passkeys. Consider updating your browser to the latest version or using a different device.
         </p>
       </div>
     );
   }
-
+  
   return (
-    <div className="p-4 border border-discord-border rounded-md bg-discord-secondary">
-      <h3 className="text-lg font-medium text-discord-text-normal mb-2">Passkeys</h3>
-      <p className="text-discord-text-muted mb-4">
-        Passkeys are a more secure way to log in without passwords. You can use your device's biometric sensors or screen lock.
+    <div className="p-6 border border-indigo-600 bg-indigo-900 bg-opacity-20 rounded-md">
+      <h3 className="text-indigo-400 font-semibold text-lg mb-2">Set Up Passkey</h3>
+      <p className="text-gray-300 mb-4">
+        Passkeys let you sign in without typing your password. You'll use your device's biometrics (like fingerprint or face) or screen lock instead.
       </p>
-
-      {status === 'success' && (
-        <div className="mb-4 p-3 bg-green-900 bg-opacity-20 border border-green-700 rounded-md text-green-400 text-sm">
-          {message}
-        </div>
-      )}
-
-      {status === 'error' && (
-        <div className="mb-4 p-3 bg-discord-error bg-opacity-20 border border-discord-error rounded-md text-discord-error text-sm">
-          {message}
-        </div>
-      )}
-
+      
       <button
         onClick={handleRegisterPasskey}
         disabled={loading}
-        className={`px-4 py-2 rounded-md font-medium transition ${
-          loading 
-            ? 'bg-discord-blurple-dark cursor-not-allowed' 
-            : 'bg-discord-blurple hover:bg-discord-blurple-dark'
-        } text-white flex items-center`}
+        className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded transition-colors duration-300 w-full disabled:opacity-50"
       >
         {loading ? (
           <>
-            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            Registering...
+            <span className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></span>
+            <span>Setting up...</span>
           </>
         ) : (
           <>
-            <svg className="w-4 h-4 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-            </svg>
-            Register Passkey
+            <span className="material-icons text-xl">fingerprint</span>
+            <span>Create Passkey</span>
           </>
         )}
       </button>
+      
+      <p className="text-gray-400 text-sm mt-3">
+        You'll be prompted to use your device's authentication method to create a passkey for this account.
+      </p>
     </div>
   );
 };
