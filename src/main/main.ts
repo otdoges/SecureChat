@@ -1,12 +1,10 @@
 import { app, BrowserWindow, ipcMain, shell, session } from 'electron';
 import * as path from 'path';
+import { startPocketBaseServer, stopPocketBaseServer, getPocketBaseUrl } from './pocketbaseServer';
 
 // Ensure environment variables are accessible
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
-
-console.log('Supabase URL:', supabaseUrl);
-console.log('Supabase Anon Key exists:', !!supabaseAnonKey);
+const pocketBaseUrl = getPocketBaseUrl();
+console.log('PocketBase URL:', pocketBaseUrl);
 
 // Remove electron-squirrel-startup dependency
 // if (require('electron-squirrel-startup')) {
@@ -15,7 +13,7 @@ console.log('Supabase Anon Key exists:', !!supabaseAnonKey);
 
 let mainWindow: BrowserWindow | null = null;
 
-const createWindow = (): void => {
+const createWindow = async (): Promise<void> => {
   console.log('Creating window...');
   console.log('Current directory:', __dirname);
   
@@ -52,11 +50,11 @@ const createWindow = (): void => {
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          "default-src 'self' https://*.supabase.co; " +
+          `default-src 'self' ${pocketBaseUrl}; ` +
           "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
           "style-src 'self' 'unsafe-inline'; " + 
           "img-src 'self' data: https:; " +
-          "connect-src 'self' https://*.supabase.co wss://*.supabase.co;"
+          `connect-src 'self' ${pocketBaseUrl} ws://${new URL(pocketBaseUrl).host};`
         ],
       },
     });
@@ -89,13 +87,25 @@ const createWindow = (): void => {
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
-app.whenReady().then(() => {
-  createWindow();
+// Some APIs can only be used after this event occurs.
+app.on('ready', async () => {
+  // Start PocketBase server
+  try {
+    await startPocketBaseServer();
+    console.log('PocketBase server started');
+  } catch (error) {
+    console.error('Failed to start PocketBase server:', error);
+  }
+  
+  await createWindow();
 });
 
-// Quit when all windows are closed, except on macOS.
+// Quit when all windows are closed, except on macOS. There, it's common
+// for applications and their menu bar to stay active until the user quits
+// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    stopPocketBaseServer();
     app.quit();
   }
 });
@@ -108,7 +118,16 @@ app.on('activate', () => {
   }
 });
 
-// IPC handlers for secure communication between main and renderer process
+app.on('will-quit', () => {
+  // Stop PocketBase server when app is about to quit
+  stopPocketBaseServer();
+});
+
+// IPC handlers
 ipcMain.handle('app:version', () => {
   return app.getVersion();
+});
+
+ipcMain.handle('get-pocketbase-url', () => {
+  return getPocketBaseUrl();
 }); 
