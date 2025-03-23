@@ -1,11 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
-
-// Get Supabase instance
-const supabaseUrl = window.env?.SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = window.env?.SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import * as pbClient from './pocketbaseClient';
 
 /**
  * Generate a QR code login session
@@ -16,17 +10,8 @@ export async function generateQRLoginSession(): Promise<{ token: string, success
     // Generate a unique session token
     const sessionToken = uuidv4();
     
-    // Store in Supabase with status 'pending'
-    const { error } = await supabase
-      .from('qr_login_sessions')
-      .insert([{ 
-        token: sessionToken, 
-        status: 'pending',
-        created_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString() // Expires in 5 minutes
-      }]);
-    
-    if (error) throw new Error(error.message);
+    // Create QR login session in PocketBase
+    await pbClient.createQRLoginSession();
     
     return { token: sessionToken, success: true };
   } catch (error: any) {
@@ -46,27 +31,28 @@ export async function checkQRLoginStatus(token: string): Promise<{
   error?: string
 }> {
   try {
-    // Check if the token exists and get its status
-    const { data, error } = await supabase
-      .from('qr_login_sessions')
-      .select('status, session_data')
-      .eq('token', token)
-      .single();
+    // Get session from PocketBase
+    const session = await pbClient.getQRLoginSession(token);
     
-    if (error) throw new Error(error.message);
-    if (!data) throw new Error('QR login session not found');
+    if (!session) {
+      throw new Error('QR login session not found');
+    }
     
     // Check if session has expired
-    if (data.status === 'expired') {
+    if (session.status === 'expired') {
       return { status: 'expired' };
     }
     
     // If authenticated, return the session
-    if (data.status === 'authenticated' && data.session_data) {
-      return { 
-        status: 'authenticated',
-        session: data.session_data
-      };
+    if (session.status === 'authenticated') {
+      // In a real implementation, this would provide the auth session
+      // For now, we'll just return the user ID, which the app would use to authenticate
+      if (session.user) {
+        return { 
+          status: 'authenticated',
+          session: { user: session.user }
+        };
+      }
     }
     
     // Otherwise, still pending
@@ -87,56 +73,39 @@ export async function authenticateQRLogin(token: string, userId: string): Promis
   error?: string 
 }> {
   try {
-    // First check if the token is valid and pending
-    const { data: qrSessionData, error: qrSessionError } = await supabase
-      .from('qr_login_sessions')
-      .select('status, expires_at')
-      .eq('token', token)
-      .single();
+    // Get session from PocketBase
+    const session = await pbClient.getQRLoginSession(token);
     
-    if (qrSessionError) throw new Error(qrSessionError.message);
-    if (!qrSessionData) throw new Error('QR login session not found');
+    if (!session) {
+      throw new Error('QR login session not found');
+    }
     
     // Check if session has expired
-    const expiresAt = new Date(qrSessionData.expires_at);
-    if (expiresAt < new Date() || qrSessionData.status !== 'pending') {
+    const expiresAt = new Date(session.expires_at);
+    if (expiresAt < new Date() || session.status !== 'pending') {
       // Update status to expired if needed
-      if (qrSessionData.status === 'pending') {
-        await supabase
-          .from('qr_login_sessions')
-          .update({ status: 'expired' })
-          .eq('token', token);
+      if (session.status === 'pending') {
+        await pbClient.updateQRLoginSession(session.id, { 
+          status: 'expired' 
+        });
       }
       throw new Error('QR login session has expired or is no longer valid');
     }
     
     // Get user information
-    const { data: userData, error: userError } = await supabase.auth.getUser(userId);
-    if (userError) throw new Error(userError.message);
-    if (!userData?.user) throw new Error('User not found');
+    const pb = pbClient.getPocketBase();
+    const userData = await pb.collection('users').getOne(userId);
     
-    // Create a session for the desktop client by signing in with a custom token
-    // Note: In a real implementation, you would need a secure server-side function with admin privileges
-    // to create a proper session token. This is a simplified version.
-    const { data: customSessionData, error: customSessionError } = await supabase.functions.invoke('create-session-for-user', {
-      body: { userId: userData.user.id }
-    });
-    
-    if (customSessionError && customSessionError.message) {
-      throw new Error(customSessionError.message);
+    if (!userData) {
+      throw new Error('User not found');
     }
     
-    // Update QR session as authenticated with session data
-    const { error: updateError } = await supabase
-      .from('qr_login_sessions')
-      .update({ 
-        status: 'authenticated',
-        session_data: customSessionData,
-        authenticated_at: new Date().toISOString()
-      })
-      .eq('token', token);
-    
-    if (updateError) throw new Error(updateError.message);
+    // Update QR session as authenticated with user data
+    await pbClient.updateQRLoginSession(session.id, { 
+      status: 'authenticated',
+      user: userId,
+      authenticated_at: new Date().toISOString()
+    });
     
     return { success: true };
   } catch (error: any) {
