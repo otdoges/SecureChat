@@ -1,4 +1,7 @@
-import PocketBase, { Record } from 'pocketbase';
+import PocketBase from 'pocketbase';
+
+// Type alias for PocketBase record
+type Record = any;
 
 // Declare window for TypeScript
 declare global {
@@ -9,6 +12,8 @@ declare global {
     };
     env: {
       POCKETBASE_URL: string;
+      SUPABASE_URL: string;
+      SUPABASE_ANON_KEY: string;
     };
   }
 }
@@ -186,11 +191,14 @@ export const getMessages = async (
 };
 
 // Realtime subscription helper
-export const subscribeToCollection = <T extends Record>(
+export const subscribeToCollection = (
   collection: string,
   callback: (data: any) => void
-): () => void => {
-  return pb.collection(collection).subscribe('*', callback);
+): (() => void) => {
+  const unsubscribe = pb.collection(collection).subscribe('*', callback);
+  return () => {
+    unsubscribe.then(unsub => unsub());
+  };
 };
 
 // Export the PocketBase instance

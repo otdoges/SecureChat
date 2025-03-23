@@ -4,10 +4,10 @@ import { contextBridge, ipcRenderer } from 'electron';
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion: () => ipcRenderer.invoke('app:version'),
+  getPocketBaseUrl: () => ipcRenderer.invoke('get-pocketbase-url'),
 });
 
 // Expose environment variables to renderer process
 contextBridge.exposeInMainWorld('env', {
-  SUPABASE_URL: process.env.VITE_SUPABASE_URL || '',
-  SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY || '',
+  POCKETBASE_URL: 'http://127.0.0.1:8090',
 }); 
