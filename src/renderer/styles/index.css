@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply h-full;
+  }
+  body {
+    @apply h-full overflow-hidden;
+    font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  }
+  #root {
+    @apply h-full;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded font-medium focus:outline-none focus:ring-2 transition-all duration-200;
+  }
+  .btn-primary {
+    @apply bg-discord-accent hover:bg-discord-accent/90 text-white;
+  }
+  .btn-secondary {
+    @apply bg-discord-secondary hover:bg-discord-secondary/90 text-discord-text-normal;
+  }
+  .btn-danger {
+    @apply bg-discord-danger hover:bg-discord-danger/90 text-white;
+  }
+  .input {
+    @apply bg-discord-tertiary text-discord-text-normal rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-discord-accent;
+  }
+  .channel {
+    @apply flex items-center px-2 py-1 rounded hover:bg-discord-primary/50 cursor-pointer transition-colors;
+  }
+  .channel.active {
+    @apply bg-discord-primary text-white;
+  }
+  .sidebar-item {
+    @apply flex items-center gap-2 px-2 py-1 rounded hover:bg-discord-secondary/80 cursor-pointer transition-colors;
+  }
+  .message {
+    @apply py-2 px-4 hover:bg-discord-secondary/30 transition-colors;
+  }
+  .message-input {
+    @apply w-full bg-discord-tertiary rounded-lg px-4 py-3 text-discord-text-normal focus:outline-none;
+  }
+} 

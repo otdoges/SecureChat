@@ -1,0 +1,1 @@
+"use strict";const e=require("electron");e.contextBridge.exposeInMainWorld("electronAPI",{getAppVersion:()=>e.ipcRenderer.invoke("app:version")});e.contextBridge.exposeInMainWorld("env",{SUPABASE_URL:process.env.VITE_SUPABASE_URL||"",SUPABASE_ANON_KEY:process.env.VITE_SUPABASE_ANON_KEY||""});

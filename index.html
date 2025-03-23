@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secure Chat</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #36393f;
+      color: #dcddde;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      text-align: center;
+    }
+    .container {
+      max-width: 600px;
+      padding: 30px;
+      background-color: #2f3136;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    h1 {
+      color: #fff;
+      margin-top: 0;
+    }
+    p {
+      margin: 15px 0;
+      line-height: 1.5;
+    }
+    .button {
+      display: inline-block;
+      background-color: #5865f2;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 4px;
+      text-decoration: none;
+      margin-top: 20px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      outline: none;
+    }
+    .button:hover {
+      background-color: #4752c4;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Secure Chat</h1>
+    <p>The application is currently starting up or the development server is not available.</p>
+    <p>If you're developing the application, please ensure the Vite development server is running on port 3000.</p>
+    <button class="button" id="reload-btn">Reload Application</button>
+  </div>
+
+  <script>
+    document.getElementById('reload-btn').addEventListener('click', () => {
+      window.location.reload();
+    });
+  </script>
+</body>
+</html> 
