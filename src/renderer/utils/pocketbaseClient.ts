@@ -16,12 +16,16 @@ declare global {
   }
 }
 
+// Default PocketBase URL
+const DEFAULT_PB_URL = 'http://127.0.0.1:8090';
+
 // Get PocketBase URL
 const getPocketBaseUrl = async (): Promise<string> => {
   try {
     // Try to get from preload script first
     if (window.electronAPI?.getPocketBaseUrl) {
-      return await window.electronAPI.getPocketBaseUrl();
+      const url = await window.electronAPI.getPocketBaseUrl();
+      if (url) return url;
     }
   } catch (error) {
     console.error('Error getting PocketBase URL from IPC:', error);
@@ -33,28 +37,50 @@ const getPocketBaseUrl = async (): Promise<string> => {
   }
 
   // Default fallback
-  return 'http://127.0.0.1:8090';
+  return DEFAULT_PB_URL;
 };
 
 // Initialize PocketBase client
-let pocketBaseUrl = 'http://127.0.0.1:8090';
+let pocketBaseUrl = DEFAULT_PB_URL;
 let pb: PocketBase = new PocketBase(pocketBaseUrl);
 
 // Initialize the client asynchronously
 export const initPocketBaseClient = async (): Promise<void> => {
-  pocketBaseUrl = await getPocketBaseUrl();
-  pb = new PocketBase(pocketBaseUrl);
-  
-  // Try to auto-authenticate from local storage
-  pb.authStore.onChange(() => {
-    console.log('Auth state changed:', pb.authStore.isValid);
-  });
+  try {
+    pocketBaseUrl = await getPocketBaseUrl();
+    console.log('Using PocketBase URL:', pocketBaseUrl);
+    
+    pb = new PocketBase(pocketBaseUrl);
+    
+    // Try to auto-authenticate from local storage
+    pb.authStore.onChange(() => {
+      console.log('Auth state changed:', pb.authStore.isValid);
+    });
+    
+    // Test the connection
+    const health = await pb.health.check();
+    console.log('PocketBase connection successful:', health);
+  } catch (error) {
+    console.error('Failed to initialize PocketBase client:', error);
+    // Still continue with the default URL - app should work offline or retry connections later
+  }
 };
 
-// Initialize the client immediately
-initPocketBaseClient().catch(error => {
-  console.error('Failed to initialize PocketBase client:', error);
-});
+// Initialize client immediately
+initPocketBaseClient().catch(console.error);
+
+// Error handling wrapper for PocketBase operations
+const withErrorHandling = async <T>(operation: () => Promise<T>, fallback?: T): Promise<T> => {
+  try {
+    return await operation();
+  } catch (error) {
+    console.error('PocketBase operation failed:', error);
+    if (fallback !== undefined) {
+      return fallback;
+    }
+    throw error;
+  }
+};
 
 // Auth related functions
 export const register = async (
