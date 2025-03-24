@@ -235,4 +235,87 @@ export async function updateUserProfile(userId: string, data: any) {
     console.error('Error updating user profile:', error);
     throw error;
   }
+}
+
+/**
+ * Update a user's custom CSS
+ * @param userId The user ID
+ * @param css The custom CSS code
+ * @returns The updated user profile
+ */
+export async function updateUserCustomCSS(userId: string, css: string) {
+  try {
+    const pb = getPocketBase();
+    const record = await pb.collection('users').update(userId, {
+      custom_css: css
+    });
+    return record;
+  } catch (error) {
+    console.error('Error updating user custom CSS:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update a user's encryption keys
+ * @param userId The user ID
+ * @param publicKey The user's public key
+ * @param encryptedPrivateKey The user's encrypted private key
+ * @returns The updated user profile
+ */
+export async function updateUserKeys(userId: string, publicKey: string, encryptedPrivateKey: string) {
+  try {
+    const pb = getPocketBase();
+    const record = await pb.collection('users').update(userId, {
+      public_key: publicKey,
+      encrypted_private_key: encryptedPrivateKey
+    });
+    return record;
+  } catch (error) {
+    console.error('Error updating user encryption keys:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get the encrypted channel key for a user
+ * @param channelId The channel ID
+ * @param userId The user ID
+ * @returns The encrypted channel key or null if not found
+ */
+export async function getChannelKey(channelId: string, userId: string) {
+  try {
+    const pb = getPocketBase();
+    const record = await pb.collection('channel_members').getFirstListItem(`channel_id = "${channelId}" && user_id = "${userId}"`);
+    return record?.encrypted_channel_key || null;
+  } catch (error: any) {
+    // If the record doesn't exist, return null
+    if (error.status === 404) {
+      return null;
+    }
+    console.error('Error getting channel key:', error);
+    throw error;
+  }
+}
+
+/**
+ * Save an encrypted message
+ * @param messageData Message data to save
+ * @returns The created message record
+ */
+export async function saveMessage(messageData: {
+  id: string;
+  channel_id: string;
+  user_id: string;
+  encrypted_content: string;
+  iv: string;
+}) {
+  try {
+    const pb = getPocketBase();
+    const record = await pb.collection('messages').create(messageData);
+    return record;
+  } catch (error) {
+    console.error('Error saving message:', error);
+    throw error;
+  }
 } 

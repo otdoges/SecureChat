@@ -10,7 +10,12 @@ import MessageInput from '../components/MessageInput';
 
 // Utilities
 import { useAuth } from '../utils/AuthContext';
-import { generateChannelKey, retrieveUserKey, decryptMessage } from '../utils/encryption';
+import { 
+  generateChannelKey, 
+  retrieveUserKey, 
+  decryptPrivateKey, 
+  decryptKeyWithPrivateKey 
+} from '../utils/encryption';
 
 // Declare window.env for TypeScript
 declare global {
@@ -30,10 +35,10 @@ const mockMessages: Record<string, MessageType[]> = {
       sender: {
         id: 'system',
         username: 'System',
+        username_suffix: 0,
         avatar: '',
       },
       timestamp: new Date(Date.now() - 86400000), // 1 day ago
-      isEncrypted: true,
     },
     {
       id: '2',
@@ -41,34 +46,36 @@ const mockMessages: Record<string, MessageType[]> = {
       sender: {
         id: 'system',
         username: 'System',
+        username_suffix: 0,
         avatar: '',
       },
       timestamp: new Date(Date.now() - 86400000 + 5000),
-      isEncrypted: true,
     },
   ],
   '102': [
     {
       id: '3',
-      content: 'Hey everyone! How are you doing?',
+      encrypted_content: '937a48294b3c9ecbdda138eb9c77b73a:U2FsdGVkX19Z1bt4eMcXpYwC7gQTP9LQy8jIDRnHy+LjQYLI9qJbULvDxRQYGuQJ',
+      iv: '937a48294b3c9ecbdda138eb9c77b73a',
       sender: {
         id: 'user1',
         username: 'Alice',
+        username_suffix: 1234,
         avatar: '',
       },
       timestamp: new Date(Date.now() - 3600000), // 1 hour ago
-      isEncrypted: true,
     },
     {
       id: '4',
-      content: 'I\'m doing great! Just testing out this new chat app.',
+      encrypted_content: 'a34f8c7d9e5a2b1c6d7e8f9a0b1c2d3e:U2FsdGVkX18zRwfJQCPQLjy+i0h5Z2Ixu9rPv1gT6Kl3NU0wZpkZILYJlkWsvV8+AEh8RzCsXeYlZf+n4Q==',
+      iv: 'a34f8c7d9e5a2b1c6d7e8f9a0b1c2d3e',
       sender: {
         id: 'user2',
         username: 'Bob',
+        username_suffix: 5678,
         avatar: '',
       },
       timestamp: new Date(Date.now() - 3000000), // 50 minutes ago
-      isEncrypted: true,
     },
   ],
 };
@@ -81,6 +88,7 @@ const ChannelView = () => {
   const [messages, setMessages] = useState<MessageType[]>([]);
   const [channelName, setChannelName] = useState('');
   const [channelKey, setChannelKey] = useState('');
+  const [userPrivateKey, setUserPrivateKey] = useState('');
   
   // If no channel is selected, redirect to general chat
   useEffect(() => {
@@ -92,9 +100,37 @@ const ChannelView = () => {
     }
   }, [channelId, serverId, navigate]);
   
+  // Load user's private key
+  useEffect(() => {
+    const loadUserPrivateKey = async () => {
+      if (!user) return;
+      
+      try {
+        // In a real app, you would fetch the user's encrypted private key from the server
+        // and decrypt it using the user's password
+        const userData = await pbClient.getUserProfile(user.id);
+        
+        if (userData && userData.encrypted_private_key) {
+          // Retrieve the user's password from local storage
+          const userPassword = localStorage.getItem('userPassword');
+          
+          if (userPassword) {
+            // Decrypt the user's private key
+            const privateKey = decryptPrivateKey(userData.encrypted_private_key, userPassword);
+            setUserPrivateKey(privateKey);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading user private key:', error);
+      }
+    };
+    
+    loadUserPrivateKey();
+  }, [user]);
+  
   // Fetch channel data and messages
   useEffect(() => {
-    if (channelId) {
+    if (channelId && userPrivateKey) {
       // In a real app, you would fetch the channel data from PocketBase
       const mockChannelName = 
         channelId === '101' ? 'welcome' :
@@ -109,47 +145,86 @@ const ChannelView = () => {
       
       setChannelName(mockChannelName);
       
-      // Generate channel encryption key
-      const userKey = retrieveUserKey(localStorage.getItem('userPassword') || '') || '';
-      if (userKey) {
-        const newChannelKey = generateChannelKey(channelId, userKey);
-        setChannelKey(newChannelKey);
-      }
+      const fetchChannelKey = async () => {
+        try {
+          // In a real app, you would fetch the encrypted channel key from the server
+          // and decrypt it using the user's private key
+          const encryptedChannelKey = await pbClient.getChannelKey(channelId, user?.id || '');
+          
+          if (encryptedChannelKey) {
+            // Decrypt the channel key using the user's private key
+            const channelKey = decryptKeyWithPrivateKey(encryptedChannelKey, userPrivateKey);
+            setChannelKey(channelKey);
+          } else {
+            // If no channel key is found, generate a new one
+            // This would typically be done by the channel creator only
+            const userKey = retrieveUserKey(localStorage.getItem('userPassword') || '') || '';
+            if (userKey) {
+              const newChannelKey = generateChannelKey(channelId, userKey);
+              setChannelKey(newChannelKey);
+              
+              // In a real app, you would encrypt the channel key with each member's public key
+              // and store it on the server
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching channel key:', error);
+        }
+      };
+      
+      fetchChannelKey();
       
       // Fetch messages for the channel
-      setMessages(mockMessages[channelId] || []);
+      const fetchMessages = async () => {
+        try {
+          // In a real app, you would fetch the messages from PocketBase
+          // For now, we'll use mock data
+          setMessages(mockMessages[channelId] || []);
+          
+          // In a real app, you would subscribe to new messages
+          // This could be done with PocketBase realtime subscriptions
+        } catch (error) {
+          console.error('Error fetching messages:', error);
+        }
+      };
       
-      // In a real app, you would subscribe to new messages
-      // This could be done with PocketBase realtime subscriptions
+      fetchMessages();
     }
-  }, [channelId]);
+  }, [channelId, userPrivateKey, user?.id]);
   
   // Handle sending a new message
-  const handleSendMessage = (content: string, encryptedContent: string) => {
-    if (!user || !channelId) return;
+  const handleSendMessage = async (content: string, encryptedContent: string, iv: string) => {
+    if (!user || !channelId || !channelKey) return;
     
     const newMessage: MessageType = {
       id: Date.now().toString(),
-      content,
+      encrypted_content: encryptedContent,
+      iv: iv,
       sender: {
         id: user.id,
         username: user.user_metadata?.username || 'User',
+        username_suffix: user.user_metadata?.username_suffix || 0,
         avatar: user.user_metadata?.avatar_url || '',
       },
       timestamp: new Date(),
-      isEncrypted: true,
     };
     
     // Add message to local state
     setMessages(prev => [...prev, newMessage]);
     
     // In a real app, you would send the encrypted message to PocketBase
-    // const { error } = await pbClient.collection('messages').create({
-    //   channel_id: channelId,
-    //   user_id: user.id,
-    //   content: encryptedContent,
-    //   created_at: new Date(),
-    // });
+    try {
+      // Save the encrypted message to the database
+      await pbClient.saveMessage({
+        id: newMessage.id,
+        channel_id: channelId,
+        user_id: user.id,
+        encrypted_content: encryptedContent,
+        iv: iv,
+      });
+    } catch (error) {
+      console.error('Error saving message:', error);
+    }
   };
   
   // Group messages by sender and time
@@ -193,6 +268,7 @@ const ChannelView = () => {
                 key={message.id}
                 message={message}
                 isFirstInGroup={messageIndex === 0}
+                channelKey={channelKey}
               />
             ))}
           </div>

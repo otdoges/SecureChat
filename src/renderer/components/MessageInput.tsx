@@ -5,7 +5,7 @@ import { encryptMessage } from '../utils/encryption';
 interface MessageInputProps {
   channelId: string;
   channelName: string;
-  onSendMessage: (content: string, encryptedContent: string) => void;
+  onSendMessage: (content: string, encryptedContent: string, iv: string) => void;
   channelKey: string;
 }
 
@@ -30,16 +30,21 @@ const MessageInput: React.FC<MessageInputProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (message.trim() === '') return;
+    if (message.trim() === '' || !channelKey) return;
     
-    // Encrypt the message
-    const encryptedContent = encryptMessage(message, channelKey);
-    
-    // Send the message
-    onSendMessage(message, encryptedContent);
-    
-    // Clear the input
-    setMessage('');
+    try {
+      // Encrypt the message with enhanced encryption
+      const { encryptedContent, iv } = encryptMessage(message, channelKey);
+      
+      // Send the message
+      onSendMessage(message, encryptedContent, iv);
+      
+      // Clear the input
+      setMessage('');
+    } catch (error) {
+      console.error('Failed to encrypt message:', error);
+      alert('Failed to encrypt message. Please try again.');
+    }
   };
 
   // Handle input change
@@ -121,7 +126,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
         <div className="mt-1 text-xs text-discord-text-muted">
           <span className="flex items-center">
             <span className="mr-1">🔒</span>
-            End-to-end encrypted
+            {channelKey ? 'End-to-end encrypted' : 'Waiting for encryption key...'}
           </span>
         </div>
       </form>

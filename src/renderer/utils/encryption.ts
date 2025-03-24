@@ -2,7 +2,7 @@ import CryptoJS from 'crypto-js';
 
 // AES encryption key size (256 bits)
 const KEY_SIZE = 256 / 32;
-const ITERATION_COUNT = 1000;
+const ITERATION_COUNT = 10000; // Increased for better security
 
 // Generate a secure key from a password and salt
 const generateKey = (password: string, salt: string): string => {
@@ -13,12 +13,17 @@ const generateKey = (password: string, salt: string): string => {
 };
 
 // Generate a random salt
-const generateSalt = (): string => {
+export const generateSalt = (): string => {
   return CryptoJS.lib.WordArray.random(128 / 8).toString();
 };
 
+// Generate a secure random key
+export const generateRandomKey = (): string => {
+  return CryptoJS.lib.WordArray.random(KEY_SIZE).toString();
+};
+
 // Encrypt message using AES-256
-export const encryptMessage = (message: string, channelKey: string): string => {
+export const encryptMessage = (message: string, channelKey: string): { encryptedContent: string, iv: string } => {
   try {
     // Generate random IV for this message
     const iv = CryptoJS.lib.WordArray.random(128 / 8);
@@ -30,10 +35,10 @@ export const encryptMessage = (message: string, channelKey: string): string => {
       padding: CryptoJS.pad.Pkcs7
     });
     
-    // Combine IV and encrypted message
-    const result = iv.toString() + ':' + encrypted.toString();
-    
-    return result;
+    return {
+      encryptedContent: encrypted.toString(),
+      iv: iv.toString()
+    };
   } catch (error) {
     console.error('Encryption error:', error);
     throw new Error('Failed to encrypt message');
@@ -41,20 +46,13 @@ export const encryptMessage = (message: string, channelKey: string): string => {
 };
 
 // Decrypt message using AES-256
-export const decryptMessage = (encryptedMessage: string, channelKey: string): string => {
+export const decryptMessage = (encryptedContent: string, iv: string, channelKey: string): string => {
   try {
-    // Split IV and encrypted part
-    const parts = encryptedMessage.split(':');
-    if (parts.length !== 2) {
-      throw new Error('Invalid encrypted message format');
-    }
-    
-    const iv = CryptoJS.enc.Hex.parse(parts[0]);
-    const encrypted = parts[1];
+    const ivParsed = CryptoJS.enc.Hex.parse(iv);
     
     // Decrypt the message
-    const decrypted = CryptoJS.AES.decrypt(encrypted, channelKey, {
-      iv: iv,
+    const decrypted = CryptoJS.AES.decrypt(encryptedContent, channelKey, {
+      iv: ivParsed,
       mode: CryptoJS.mode.CBC,
       padding: CryptoJS.pad.Pkcs7
     });
@@ -76,6 +74,74 @@ export const generateChannelKey = (channelId: string, userKey: string): string =
 export const generateUserKey = (userId: string, password: string): string => {
   const salt = userId; // Use userId as salt
   return generateKey(password, salt);
+};
+
+// Generate an asymmetric key pair for the user
+export const generateKeyPair = (): { publicKey: string, privateKey: string } => {
+  // In a real-world app, you'd use a proper asymmetric crypto library
+  // For this example, we'll simulate by generating two random keys
+  const privateKey = CryptoJS.lib.WordArray.random(KEY_SIZE).toString();
+  const publicKey = CryptoJS.SHA256(privateKey).toString();
+  
+  return { publicKey, privateKey };
+};
+
+// Encrypt a key with a user's public key (simulated)
+export const encryptKeyWithPublicKey = (key: string, publicKey: string): string => {
+  // In a real app, you'd use the recipient's public key for asymmetric encryption
+  // Here we're simplifying by using a symmetric approach
+  const salt = generateSalt();
+  const encrypted = CryptoJS.AES.encrypt(key, publicKey, {
+    salt: CryptoJS.enc.Hex.parse(salt)
+  }).toString();
+  
+  return salt + ':' + encrypted;
+};
+
+// Decrypt a key with a user's private key (simulated)
+export const decryptKeyWithPrivateKey = (encryptedKey: string, privateKey: string): string => {
+  // In a real app, you'd use the user's private key for asymmetric decryption
+  // Here we're simplifying by using a symmetric approach
+  const parts = encryptedKey.split(':');
+  if (parts.length !== 2) {
+    throw new Error('Invalid encrypted key format');
+  }
+  
+  const salt = parts[0];
+  const encrypted = parts[1];
+  
+  const decrypted = CryptoJS.AES.decrypt(encrypted, privateKey, {
+    salt: CryptoJS.enc.Hex.parse(salt)
+  });
+  
+  return decrypted.toString(CryptoJS.enc.Utf8);
+};
+
+// Encrypt user's private key with their password
+export const encryptPrivateKey = (privateKey: string, password: string): string => {
+  const salt = generateSalt();
+  const encrypted = CryptoJS.AES.encrypt(privateKey, password, {
+    salt: CryptoJS.enc.Hex.parse(salt)
+  }).toString();
+  
+  return salt + ':' + encrypted;
+};
+
+// Decrypt user's private key with their password
+export const decryptPrivateKey = (encryptedPrivateKey: string, password: string): string => {
+  const parts = encryptedPrivateKey.split(':');
+  if (parts.length !== 2) {
+    throw new Error('Invalid encrypted private key format');
+  }
+  
+  const salt = parts[0];
+  const encrypted = parts[1];
+  
+  const decrypted = CryptoJS.AES.decrypt(encrypted, password, {
+    salt: CryptoJS.enc.Hex.parse(salt)
+  });
+  
+  return decrypted.toString(CryptoJS.enc.Utf8);
 };
 
 // Store user key securely in local storage (encrypted with their password)
@@ -113,5 +179,5 @@ export const retrieveUserKey = (password: string): string | null => {
 // Setup encryption (called once when app starts)
 export const setupEncryption = () => {
   // Initialize any encryption setup needed
-  console.log('Encryption system initialized');
+  console.log('Enhanced encryption system initialized');
 }; 

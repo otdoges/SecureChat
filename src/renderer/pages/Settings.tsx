@@ -4,16 +4,21 @@ import { useAuth } from '../utils/AuthContext';
 import PasskeySetup from '../components/PasskeySetup';
 import { isPasskeySupported } from '../utils/passkey';
 import * as pbClient from '../utils/pocketbaseClient';
+import { generateKeyPair, encryptPrivateKey } from '../utils/encryption';
 
 const Settings: React.FC = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [avatar, setAvatar] = useState<string | null>(null);
   const [username, setUsername] = useState('');
+  const [usernameSuffix, setUsernameSuffix] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [passkeySupported, setPasskeySupported] = useState(false);
   const [showPasskeySetup, setShowPasskeySetup] = useState(false);
+  const [customCSS, setCustomCSS] = useState('');
+  const [showResetEncryptionKey, setShowResetEncryptionKey] = useState(false);
+  const [password, setPassword] = useState('');
   
   useEffect(() => {
     // Check if passkeys are supported
@@ -36,7 +41,9 @@ const Settings: React.FC = () => {
         
         if (userData) {
           setUsername(userData.username || '');
+          setUsernameSuffix(userData.username_suffix || null);
           setAvatar(userData.avatar || null);
+          setCustomCSS(userData.custom_css || '');
         }
       } catch (error) {
         console.error('Error loading user profile:', error);
@@ -74,6 +81,88 @@ const Settings: React.FC = () => {
       console.error('Error updating profile:', error);
       setMessage({
         text: error.message || 'Failed to update profile',
+        type: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateCustomCSS = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!user) return;
+    
+    try {
+      setLoading(true);
+      setMessage(null);
+      
+      // Update custom CSS in PocketBase
+      await pbClient.updateUserCustomCSS(user.id, customCSS);
+      
+      // Apply the custom CSS to the current page
+      applyCustomCSS(customCSS);
+      
+      setMessage({
+        text: 'Custom CSS updated successfully',
+        type: 'success'
+      });
+    } catch (error: any) {
+      console.error('Error updating custom CSS:', error);
+      setMessage({
+        text: error.message || 'Failed to update custom CSS',
+        type: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const applyCustomCSS = (css: string) => {
+    // Remove any existing custom style element
+    const existingStyle = document.getElementById('user-custom-css');
+    if (existingStyle) {
+      existingStyle.remove();
+    }
+    
+    // Create and append new style element with user's CSS
+    if (css.trim()) {
+      const styleElement = document.createElement('style');
+      styleElement.id = 'user-custom-css';
+      styleElement.textContent = css;
+      document.head.appendChild(styleElement);
+    }
+  };
+
+  const handleResetEncryptionKeys = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!user || !password) return;
+    
+    try {
+      setLoading(true);
+      setMessage(null);
+      
+      // Generate new key pair
+      const { publicKey, privateKey } = generateKeyPair();
+      
+      // Encrypt private key with user password
+      const encryptedPrivateKey = encryptPrivateKey(privateKey, password);
+      
+      // Update keys in PocketBase
+      await pbClient.updateUserKeys(user.id, publicKey, encryptedPrivateKey);
+      
+      setMessage({
+        text: 'Encryption keys reset successfully. You will need to re-join channels to access them.',
+        type: 'success'
+      });
+      
+      setShowResetEncryptionKey(false);
+      setPassword('');
+    } catch (error: any) {
+      console.error('Error resetting encryption keys:', error);
+      setMessage({
+        text: error.message || 'Failed to reset encryption keys',
         type: 'error'
       });
     } finally {
@@ -140,13 +229,19 @@ const Settings: React.FC = () => {
               
               <div>
                 <label htmlFor="username" className="block text-gray-300 mb-1">Username</label>
-                <input
-                  id="username"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:border-indigo-500"
-                />
+                <div className="flex items-center">
+                  <input
+                    id="username"
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="flex-1 p-2 rounded-l bg-gray-700 text-white border border-gray-600 focus:outline-none focus:border-indigo-500"
+                  />
+                  <span className="bg-gray-600 p-2 rounded-r border border-gray-600">
+                    #{usernameSuffix || '0000'}
+                  </span>
+                </div>
+                <p className="text-gray-400 text-sm mt-1">Your unique ID number cannot be changed</p>
               </div>
               
               <button
@@ -157,6 +252,93 @@ const Settings: React.FC = () => {
                 {loading ? 'Saving...' : 'Save Changes'}
               </button>
             </form>
+          </div>
+        </div>
+
+        <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden mb-6">
+          <div className="p-6">
+            <h2 className="text-xl font-semibold mb-4">Appearance</h2>
+            
+            <form onSubmit={handleUpdateCustomCSS} className="space-y-4">
+              <div>
+                <label htmlFor="customcss" className="block text-gray-300 mb-1">Custom CSS</label>
+                <textarea
+                  id="customcss"
+                  value={customCSS}
+                  onChange={(e) => setCustomCSS(e.target.value)}
+                  className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:border-indigo-500 font-mono"
+                  rows={10}
+                  placeholder="/* Add your custom CSS here */"
+                />
+                <p className="text-gray-400 text-sm mt-1">
+                  Customize the appearance of the app with CSS. Changes apply immediately.
+                </p>
+              </div>
+              
+              <button
+                type="submit"
+                disabled={loading}
+                className="bg-indigo-600 text-white py-2 px-4 rounded hover:bg-indigo-700 transition duration-300 disabled:opacity-50"
+              >
+                {loading ? 'Applying...' : 'Apply CSS'}
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden mb-6">
+          <div className="p-6">
+            <h2 className="text-xl font-semibold mb-4">Security</h2>
+            
+            {!showResetEncryptionKey ? (
+              <button
+                onClick={() => setShowResetEncryptionKey(true)}
+                className="bg-yellow-600 text-white py-2 px-4 rounded hover:bg-yellow-700 transition duration-300"
+              >
+                Reset Encryption Keys
+              </button>
+            ) : (
+              <form onSubmit={handleResetEncryptionKeys} className="space-y-4 border border-yellow-700 rounded-md p-4 bg-yellow-900 bg-opacity-20">
+                <p className="text-yellow-400 text-sm">
+                  <strong>Warning:</strong> Resetting your encryption keys will require you to re-join all encrypted channels.
+                  Messages encrypted with your old keys will become inaccessible.
+                </p>
+                
+                <div>
+                  <label htmlFor="password" className="block text-gray-300 mb-1">Enter Your Password</label>
+                  <input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:border-indigo-500"
+                    autoComplete="current-password"
+                    required
+                  />
+                </div>
+                
+                <div className="flex space-x-4">
+                  <button
+                    type="submit"
+                    disabled={loading || !password}
+                    className="bg-yellow-600 text-white py-2 px-4 rounded hover:bg-yellow-700 transition duration-300 disabled:opacity-50"
+                  >
+                    {loading ? 'Resetting...' : 'Confirm Reset'}
+                  </button>
+                  
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowResetEncryptionKey(false);
+                      setPassword('');
+                    }}
+                    className="bg-gray-600 text-white py-2 px-4 rounded hover:bg-gray-700 transition duration-300"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
         
