@@ -27,6 +27,10 @@ export default defineConfig(({ mode }) => {
     define: {
       'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL),
       'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY),
+      'import.meta.env.POCKETBASE_URL': JSON.stringify(env.POCKETBASE_URL || 'http://127.0.0.1:8090'),
+      'process.env.POCKETBASE_URL': JSON.stringify(env.POCKETBASE_URL || 'http://127.0.0.1:8090'),
+      'process.env.PB_ADMIN_EMAIL': JSON.stringify(env.PB_ADMIN_EMAIL || 'admin@secuechat.app'),
+      'process.env.PB_ADMIN_PASSWORD': JSON.stringify(env.PB_ADMIN_PASSWORD || 'secureadminpassword'),
     },
     plugins: [
       react(),
@@ -41,6 +45,9 @@ export default defineConfig(({ mode }) => {
             define: {
               'process.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL),
               'process.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY),
+              'process.env.POCKETBASE_URL': JSON.stringify(env.POCKETBASE_URL || 'http://127.0.0.1:8090'),
+              'process.env.PB_ADMIN_EMAIL': JSON.stringify(env.PB_ADMIN_EMAIL || 'admin@secuechat.app'),
+              'process.env.PB_ADMIN_PASSWORD': JSON.stringify(env.PB_ADMIN_PASSWORD || 'secureadminpassword'),
             },
           },
         },
@@ -50,6 +57,9 @@ export default defineConfig(({ mode }) => {
           vite: {
             build: {
               outDir: 'dist/preload',
+            },
+            define: {
+              'process.env.POCKETBASE_URL': JSON.stringify(env.POCKETBASE_URL || 'http://127.0.0.1:8090'),
             },
           },
           onstart: (options) => {
