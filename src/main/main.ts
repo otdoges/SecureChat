@@ -90,12 +90,15 @@ const createWindow = async (): Promise<void> => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
+  // Register all IPC handlers first
+  registerIPCHandlers();
+  
   // Start PocketBase server
   try {
     await startPocketBaseServer();
-    console.log('PocketBase server started');
+    console.log('PocketBase client initialized');
   } catch (error) {
-    console.error('Failed to start PocketBase server:', error);
+    console.error('Failed to initialize PocketBase client:', error);
   }
   
   await createWindow();
@@ -125,10 +128,14 @@ app.on('will-quit', () => {
 });
 
 // IPC handlers
-ipcMain.handle('app:version', () => {
-  return app.getVersion();
-});
+function registerIPCHandlers() {
+  // Application version
+  ipcMain.handle('app:version', () => {
+    return app.getVersion();
+  });
 
-ipcMain.handle('get-pocketbase-url', () => {
-  return getPocketBaseUrl();
-}); 
+  // PocketBase URL
+  ipcMain.handle('get-pocketbase-url', () => {
+    return getPocketBaseUrl();
+  });
+} 

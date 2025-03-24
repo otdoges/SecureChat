@@ -4,11 +4,19 @@ import { contextBridge, ipcRenderer } from 'electron';
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion: () => ipcRenderer.invoke('app:version'),
-  // Use a direct URL instead of IPC for now to avoid the error
-  getPocketBaseUrl: () => Promise.resolve('http://127.0.0.1:8090'),
+  getPocketBaseUrl: async () => {
+    try {
+      // Try to get from the main process
+      return await ipcRenderer.invoke('get-pocketbase-url');
+    } catch (error) {
+      console.error('Failed to get PocketBase URL from main process:', error);
+      // Fallback to default
+      return 'http://127.0.0.1:8090';
+    }
+  },
 });
 
 // Expose environment variables to renderer process
 contextBridge.exposeInMainWorld('env', {
-  POCKETBASE_URL: 'http://127.0.0.1:8090',
+  POCKETBASE_URL: process.env.POCKETBASE_URL || 'http://127.0.0.1:8090',
 }); 

@@ -1,130 +1,47 @@
 import { app } from 'electron';
 import * as path from 'path';
 import PocketBase from 'pocketbase';
-import * as fs from 'fs';
-import * as http from 'http';
 
-// Define PocketBase server URL and port
+// Define PocketBase server URL 
+// This can be your local or remote PocketBase URL
 const PB_PORT = 8090;
-const PB_URL = `http://127.0.0.1:${PB_PORT}`;
-
-// Path to the PocketBase executable in production
-const getPocketBaseExecutablePath = () => {
-  // In development, we'll use the PocketBase node module
-  if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
-    return null;
-  }
-
-  // In production, we'll use the PocketBase executable
-  const platform = process.platform;
-  const arch = process.arch;
-  
-  let executableName = 'pocketbase';
-  
-  if (platform === 'win32') {
-    executableName = 'pocketbase.exe';
-  }
-  
-  return path.join(app.getAppPath(), 'pocketbase', platform, arch, executableName);
-};
-
-// Path to PocketBase data directory
-const getPocketBaseDataDir = () => {
-  return path.join(app.getPath('userData'), 'pocketbase_data');
-};
-
-// PocketBase server process
-let pocketBaseProcess: any = null;
+const PB_URL = process.env.POCKETBASE_URL || `http://127.0.0.1:${PB_PORT}`;
 
 // Initialize PocketBase client
 const pb = new PocketBase(PB_URL);
 
 /**
- * Start the PocketBase server
+ * Start the PocketBase client connection
+ * Now we're just initializing the client connection, not starting a server
  */
 export const startPocketBaseServer = async (): Promise<void> => {
-  // Check if PocketBase server is already running
   try {
+    console.log('Connecting to PocketBase at:', PB_URL);
+    
+    // Check if the server is accessible
     const response = await fetch(`${PB_URL}/api/health`);
     if (response.ok) {
-      console.log('PocketBase server is already running');
-      return;
+      console.log('PocketBase server is accessible');
+    } else {
+      console.warn('PocketBase server responded with status:', response.status);
     }
-  } catch (err) {
-    // Server is not running, continue with startup
+    
+    // Initialize collections if we're using an admin account
+    if (process.env.PB_ADMIN_EMAIL && process.env.PB_ADMIN_PASSWORD) {
+      await initializeCollections();
+    } else {
+      console.log('Skipping collection initialization (no admin credentials provided)');
+    }
+  } catch (error) {
+    console.error('Failed to connect to PocketBase server:', error);
+    console.log('Please make sure PocketBase is running at:', PB_URL);
+    console.log('You can:');
+    console.log('1. Install PocketBase from https://pocketbase.io/docs/');
+    console.log(`2. Run it with: ./pocketbase serve --http=127.0.0.1:${PB_PORT}`);
+    console.log('3. Or use a remote PocketBase instance by setting POCKETBASE_URL environment variable');
+    
+    // Don't throw an error, just log it - the app can still function without PocketBase
   }
-
-  // Create data directory if it doesn't exist
-  const dataDir = getPocketBaseDataDir();
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-
-  const execPath = getPocketBaseExecutablePath();
-  
-  if (execPath && fs.existsSync(execPath)) {
-    // Start PocketBase executable in production
-    const { spawn } = require('child_process');
-    
-    pocketBaseProcess = spawn(execPath, ['serve', '--http', `127.0.0.1:${PB_PORT}`, '--dir', dataDir], {
-      detached: false,
-    });
-    
-    pocketBaseProcess.stdout.on('data', (data: Buffer) => {
-      console.log(`PocketBase: ${data.toString()}`);
-    });
-    
-    pocketBaseProcess.stderr.on('data', (data: Buffer) => {
-      console.error(`PocketBase error: ${data.toString()}`);
-    });
-  } else {
-    // In development, we'll use the HTTP server to check if PocketBase is available
-    console.log('Please start PocketBase server separately during development');
-    console.log(`- Download PocketBase from https://pocketbase.io/docs/`);
-    console.log(`- Run it with: ./pocketbase serve --http=127.0.0.1:${PB_PORT} --dir=${dataDir}`);
-  }
-
-  // Wait for server to be ready
-  await waitForServerReady();
-  
-  // Initialize collections
-  await initializeCollections();
-};
-
-/**
- * Wait for the PocketBase server to be ready
- */
-const waitForServerReady = (): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    const MAX_RETRIES = 20;
-    let retries = 0;
-    
-    const checkServer = () => {
-      http.get(`${PB_URL}/api/health`, (res) => {
-        if (res.statusCode === 200) {
-          console.log('PocketBase server is ready');
-          resolve();
-        } else {
-          retryConnection();
-        }
-      }).on('error', () => {
-        retryConnection();
-      });
-    };
-    
-    const retryConnection = () => {
-      retries += 1;
-      if (retries > MAX_RETRIES) {
-        reject(new Error('Could not connect to PocketBase server'));
-        return;
-      }
-      
-      console.log(`Waiting for PocketBase server to be ready (attempt ${retries}/${MAX_RETRIES})...`);
-      setTimeout(checkServer, 1000);
-    };
-    
-    checkServer();
-  });
 };
 
 /**
@@ -172,6 +89,10 @@ const initializeCollections = async (): Promise<void> => {
             type: 'relation',
             options: { collectionId: '_pb_users_auth_', cascadeDelete: false },
           },
+          {
+            name: 'encrypted_channel_key',
+            type: 'text',
+          },
         ],
         listRule: '@request.auth.id != ""',
         viewRule: '@request.auth.id != ""',
@@ -189,23 +110,23 @@ const initializeCollections = async (): Promise<void> => {
         type: 'base',
         schema: [
           {
-            name: 'content',
+            name: 'encrypted_content',
             type: 'text',
             required: true,
           },
           {
-            name: 'encrypted',
-            type: 'bool',
-            defaultValue: true,
+            name: 'iv',
+            type: 'text',
+            required: true,
           },
           {
-            name: 'channel',
+            name: 'channel_id',
             type: 'relation',
             required: true,
             options: { collectionId: 'channels', cascadeDelete: true },
           },
           {
-            name: 'user',
+            name: 'user_id',
             type: 'relation',
             required: true,
             options: { collectionId: '_pb_users_auth_', cascadeDelete: false },
@@ -219,10 +140,48 @@ const initializeCollections = async (): Promise<void> => {
         listRule: '@request.auth.id != ""',
         viewRule: '@request.auth.id != ""',
         createRule: '@request.auth.id != ""',
-        updateRule: '@request.auth.id = @collection.messages.user',
-        deleteRule: '@request.auth.id = @collection.messages.user',
+        updateRule: '@request.auth.id = @collection.messages.user_id',
+        deleteRule: '@request.auth.id = @collection.messages.user_id',
       });
       console.log('Created messages collection');
+    }
+    
+    // Create channel_members collection
+    if (!collections.find(c => c.name === 'channel_members')) {
+      await pb.collections.create({
+        name: 'channel_members',
+        type: 'base',
+        schema: [
+          {
+            name: 'channel_id',
+            type: 'relation',
+            required: true,
+            options: { collectionId: 'channels', cascadeDelete: true },
+          },
+          {
+            name: 'user_id',
+            type: 'relation',
+            required: true,
+            options: { collectionId: '_pb_users_auth_', cascadeDelete: true },
+          },
+          {
+            name: 'encrypted_channel_key',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'joined_at',
+            type: 'date',
+            required: true,
+          },
+        ],
+        listRule: '@request.auth.id != ""',
+        viewRule: '@request.auth.id != ""',
+        createRule: '@request.auth.id != ""',
+        updateRule: '@request.auth.id = @collection.channel_members.user_id',
+        deleteRule: '@request.auth.id = @collection.channel_members.user_id',
+      });
+      console.log('Created channel_members collection');
     }
     
     // Create passkeys collection
@@ -257,11 +216,11 @@ const initializeCollections = async (): Promise<void> => {
             type: 'json',
           },
         ],
-        listRule: '@request.auth.id = @collection.passkeys.user',
-        viewRule: '@request.auth.id = @collection.passkeys.user',
-        createRule: '@request.auth.id != ""',
-        updateRule: '@request.auth.id = @collection.passkeys.user',
-        deleteRule: '@request.auth.id = @collection.passkeys.user',
+        listRule: '@request.auth.id = user.id',
+        viewRule: '@request.auth.id = user.id',
+        createRule: '@request.auth.id = user.id',
+        updateRule: '@request.auth.id = user.id',
+        deleteRule: '@request.auth.id = user.id',
       });
       console.log('Created passkeys collection');
     }
@@ -282,7 +241,7 @@ const initializeCollections = async (): Promise<void> => {
             type: 'select',
             required: true,
             options: {
-              values: ['pending', 'authenticated', 'expired'],
+              values: ['pending', 'authenticated', 'expired', 'cancelled'],
             },
           },
           {
@@ -291,40 +250,33 @@ const initializeCollections = async (): Promise<void> => {
             options: { collectionId: '_pb_users_auth_', cascadeDelete: false },
           },
           {
+            name: 'authenticated_at',
+            type: 'date',
+          },
+          {
             name: 'expires_at',
             type: 'date',
             required: true,
           },
-          {
-            name: 'authenticated_at',
-            type: 'date',
-          },
         ],
-        listRule: '',
-        viewRule: '',
         createRule: '',
-        updateRule: '',
+        updateRule: 'status = "pending" && @request.data.status = "authenticated"',
         deleteRule: '',
       });
       console.log('Created qr_login_sessions collection');
     }
-    
-    console.log('PocketBase collections initialized');
-    
   } catch (error) {
-    console.error('Error initializing PocketBase collections:', error);
+    console.error('Error initializing collections:', error);
   }
 };
 
 /**
- * Stop the PocketBase server
+ * Stop the PocketBase connection
+ * Now just a no-op function since we're not managing a server
  */
 export const stopPocketBaseServer = (): void => {
-  if (pocketBaseProcess) {
-    console.log('Stopping PocketBase server...');
-    pocketBaseProcess.kill();
-    pocketBaseProcess = null;
-  }
+  console.log('Disconnecting from PocketBase');
+  // Nothing to do here now
 };
 
 /**
